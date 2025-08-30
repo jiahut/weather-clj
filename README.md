@@ -32,11 +32,14 @@
 ### Windows:
 ```cmd
 set WEATHERAPI_API_KEY=your-weatherapi-key-here
+set OPENWEATHER_API_KEY=your-key
+
 ```
 
 ### Linux/Mac:
 ```bash
 export WEATHERAPI_API_KEY=your-weatherapi-key-here
+export OPENWEATHER_API_KEY=your-key
 ```
 
 ## 测试运行
