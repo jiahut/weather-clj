@@ -3,23 +3,28 @@
             [weather-clj.config :as config]
             [clojure.tools.logging :as log]))
 
-(defn- try-api
-  "尝试使用指定API获取天气数据"
+  (defn- try-api
+  "尝试使用指定API获取天气数据
+   返回统一的结果 map：{:success true :data ...} 或 {:success false :error ...}"
   [api-client city days max-retries]
   (loop [attempt 1]
     (let [result (try
                    (log/info "尝试获取天气数据，API:" (type api-client) "，尝试次数:" attempt)
-                   {:success true :data (api/get-forecast api-client city days)}
+                   (let [resp (api/get-forecast api-client city days)]
+                     ;; API 实现可能返回 {:api <id> :data <seq>} 或直接返回 seq
+                     (if (and (map? resp) (contains? resp :data))
+                       {:success true :api (:api resp) :data (:data resp)}
+                       {:success true :data resp}))
                    (catch Exception e
                      (log/warn e "API调用失败，尝试次数:" attempt)
                      {:success false :error e}))]
       (if (:success result)
-        (:data result)
+        result                                   ; 返回统一的 map，包含 :api/:data
         (if (< attempt max-retries)
           (do
             (Thread/sleep (* 1000 attempt)) ; 指数退避
             (recur (inc attempt)))
-          (throw (:error result)))))))
+          result)))))                             ; 返回最后一次失败的 map
 
 (defn get-weather-forecast
   "获取天气预报，支持多API故障转移"
@@ -27,7 +32,7 @@
   ([city days]
    (let [config (config/load-config)
          available-apis (config/get-available-apis config)
-         max-retries (:retry-attempts config)]
+         max-retries (or (:retry-attempts config) 3)]
      (if (empty? available-apis)
        (throw (ex-info "没有可用的API配置" {:available-apis available-apis})))
 
@@ -42,14 +47,19 @@
                result (try
                         (log/info "尝试使用API:" current-api)
                         (let [api-client (api/create-api-client current-api config)
-                              api-result (try-api api-client city days max-retries)]
-                          (log/info "成功获取天气数据，使用API:" current-api)
-                          {:success true :data api-result})
+                              api-try-result (try-api api-client city days max-retries)]
+                          (if (:success api-try-result)
+                            (do
+                              (log/info "成功获取天气数据，使用API:" current-api)
+                              {:success true :api current-api :data (:data api-try-result)})
+                            ;; try-api 已返回失败 map，抛出以进入 catch 分支处理
+                            (throw (:error api-try-result))))
                         (catch Exception e
                           (log/error e "API失败:" current-api)
                           {:success false :error e}))]
            (if (:success result)
-             (:data result)
+             ;; 统一返回带 :api 的 map（上层代码期待该结构）
+             {:api (:api result) :data (:data result)}
              (if (empty? remaining-apis)
                (throw (ex-info "所有API都失败了" {:city city :days days :last-error (.getMessage (:error result))}))
                (do
@@ -109,8 +119,13 @@
                 (print separator))
               (println))]
 
-      ;; 表头：日期行
-      (let [dates (map #(-> % :date (subs 5)) data)] ; 只显示月-日
+      ;; 表头：日期行（健壮处理空或短日期字符串）
+      (let [format-date (fn [d]
+                          (let [s (or d "")]
+                            (if (and (string? s) (>= (count s) 5))
+                              (subs s 5)
+                              "--")))
+            dates (map #(format-date (:date %)) data)] ; 只显示月-日
         (print-row "日期" dates))
 
       ;; 分隔线
