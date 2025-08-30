@@ -1,0 +1,17 @@
+;; 天气查询工具配置文件示例
+;; 复制此文件为 config.edn 并根据需要修改
+
+{:apis {:weatherapi {:base-url "https://api.weatherapi.com/v1"
+                     :api-key "your-weatherapi-api-key"
+                     :priority 1}  ; WeatherAPI优先级最高（100万次/月）
+        :openweathermap {:base-url "https://api.openweathermap.org/data/2.5"
+                         :api-key "your-openweathermap-api-key"
+                         :priority 2}}  ; OpenWeatherMap次优先级（1000次/天）
+ :city {:default "上海"
+        :country "CN"}
+ :timeout 10000
+ :retry-attempts 3}
+
+;; 获取API密钥的链接:
+;; WeatherAPI (推荐): https://www.weatherapi.com/
+;; OpenWeatherMap: https://openweathermap.org/api
